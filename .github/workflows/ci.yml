@@ -1,0 +1,129 @@
+name: Build and release
+on:
+  pull_request:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * 2'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate release origin
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*$ ]]
+          version="$(python3 -c 'import json; print(json.load(open("upstream.lock.json"))["version"])')"
+          case "$RELEASE_TAG" in "$version"-r*) ;; *) exit 1 ;; esac
+          git merge-base --is-ancestor HEAD origin/main
+          test "$GITHUB_REPOSITORY" = voboshi/simplex-chat-docker
+      - name: Build runtime
+        run: docker build --pull --no-cache --platform linux/amd64 --target runtime -t simplex-chat:test .
+      - name: Build synthetic peer
+        run: docker build --pull --platform linux/amd64 --target smoke -t simplex-chat:smoke .
+      - name: Validate runtime
+        run: |
+          test "$(docker image inspect -f '{{.Os}}/{{.Architecture}}' simplex-chat:test)" = linux/amd64
+          docker compose config --quiet
+          sh tests/smoke.sh
+      - name: Vulnerability gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: simplex-chat:test
+          version: v0.70.0
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          cache: false
+      - name: Generate SBOM
+        if: github.event_name == 'release'
+        run: trivy image --format cyclonedx --output sbom.cdx.json simplex-chat:test
+      - name: Export tested image
+        if: github.event_name == 'release'
+        run: |
+          docker save simplex-chat:test -o runtime.tar
+          sha256sum runtime.tar sbom.cdx.json > checksums.txt
+      - name: Transfer tested artifacts
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-image
+          path: |
+            runtime.tar
+            sbom.cdx.json
+            checksums.txt
+          retention-days: 7
+          if-no-files-found: error
+  publish:
+    needs: test
+    if: >-
+      github.event_name == 'release' &&
+      !github.event.release.prerelease &&
+      github.repository == 'voboshi/simplex-chat-docker'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/voboshi/simplex-chat-docker
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tested-image
+      - name: Publish the tested image
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          sha256sum -c checksums.txt
+          docker load -i runtime.tar
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          docker tag simplex-chat:test "$IMAGE:$RELEASE_TAG"
+          docker push "$IMAGE:$RELEASE_TAG"
+          reference="$(docker inspect -f '{{index .RepoDigests 0}}' "$IMAGE:$RELEASE_TAG")"
+          digest="$(printf '%s' "$reference" | cut -d@ -f2)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf 'Published: %s@%s\n' "$IMAGE" "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/voboshi/simplex-chat-docker
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Publish SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ghcr.io/voboshi/simplex-chat-docker
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true
+      - name: Verify anonymous pull
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          docker logout ghcr.io
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends skopeo
+          skopeo inspect --no-creds "docker://$IMAGE@$DIGEST" > manifest.json
+          python3 -c 'import json; m=json.load(open("manifest.json")); assert m["Os"] == "linux" and m["Architecture"] == "amd64"'
+          skopeo copy --src-no-creds "docker://$IMAGE@$DIGEST" "dir:$RUNNER_TEMP/anonymous-image"
+          printf 'Anonymous pull verified: %s@%s (linux/amd64)\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!entrypoint.sh
+!upstream.lock.json
+!SOURCE.md
+!scripts/
+!scripts/upstream.py
+!tests/
+!tests/ws.py

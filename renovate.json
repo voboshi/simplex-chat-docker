@@ -1,0 +1,48 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Etc/UTC",
+  "schedule": [
+    "* 5-8 * * 2"
+  ],
+  "automerge": false,
+  "platformAutomerge": false,
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "ignorePaths": [
+    "upstream.lock.json"
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "pinDigests": true
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true
+    },
+    {
+      "matchPackageNames": [
+        "simplex-chat/simplex-chat"
+      ],
+      "enabled": false
+    },
+    {
+      "matchManagers": [
+        "docker-compose"
+      ],
+      "matchPackageNames": [
+        "simplex-chat"
+      ],
+      "enabled": false
+    }
+  ]
+}

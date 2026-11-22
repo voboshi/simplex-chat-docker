@@ -1,0 +1,29 @@
+services:
+  simplex:
+    build:
+      context: .
+      target: runtime
+    image: simplex-chat:local
+    platform: linux/amd64
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+    volumes:
+      - profile:/data
+    networks:
+      - outbound
+    logging:
+      driver: none
+    stop_grace_period: 30s
+
+networks:
+  outbound:
+    driver: bridge
+
+volumes:
+  profile:

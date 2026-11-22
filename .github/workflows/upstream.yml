@@ -1,0 +1,45 @@
+name: Upstream update
+on:
+  schedule:
+    - cron: '11 6 * * 2'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  propose:
+    if: github.ref == 'refs/heads/main' && github.repository == 'voboshi/simplex-chat-docker'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Prepare verified update
+        run: python3 scripts/upstream.py update
+      - name: Open reviewable update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- upstream.lock.json; then exit 0; fi
+          version="$(python3 -c 'import json; print(json.load(open("upstream.lock.json"))["version"])')"
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          branch="automation/upstream-$version"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then exit 0; fi
+          git switch -c "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add upstream.lock.json
+          git commit -m "Update verified SimpleX release to $version"
+          gh auth setup-git
+          git push origin "$branch"
+          printf '%s\n' \
+            'Update the upstream version, executable hash, signed checksum material and source commit together.' \
+            '' \
+            'Review the source and upstream advisories, and require the dispatched Build and release workflow to pass before merging.' \
+            'This update does not publish an image.' > "$RUNNER_TEMP/update-body.md"
+          gh pr create --head "$branch" --base main --title "Update SimpleX to $version" --body-file "$RUNNER_TEMP/update-body.md"
+          gh workflow run ci.yml --ref "$branch"
