@@ -8,7 +8,7 @@ permissions:
 jobs:
   propose:
     if: github.ref == 'refs/heads/main' && github.repository == 'voboshi/simplex-chat-docker'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write
