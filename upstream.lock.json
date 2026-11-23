@@ -1,0 +1,10 @@
+{
+  "version": "v7.1.4",
+  "source_commit": "62ea5dc4afb73a0256ba0088f0ae85be750afc99",
+  "asset": "simplex-chat-ubuntu-22_04-x86_64",
+  "binary_sha256": "344e52fb4794bf86b0ec01534692f9b930de2c36b3af21dad45045e5af59f22f",
+  "checksums_sha256": "7409dfe27dfd787ca0992ca6f7b4633c2f774ddfb5dc458fdf587d21a4bb9650",
+  "signature_sha256": "536287119859d7688d7c8d50b831c314e39ae479e460cf248859064bbf6de086",
+  "license_sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+  "signed_asset": "v7.1.4/simplex-chat-ubuntu-22_04-x86_64"
+}

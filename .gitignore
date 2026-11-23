@@ -1,0 +1,8 @@
+/out/
+/dist/
+/.cache/
+*.db
+*.db-*
+*.sqlite*
+.env
+__pycache__/
