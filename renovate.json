@@ -11,7 +11,9 @@
   ],
   "automerge": false,
   "platformAutomerge": false,
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "prConcurrentLimit": 5,
   "ignorePaths": [
     "upstream.lock.json"
